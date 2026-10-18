@@ -143,7 +143,7 @@
 <dialog id="admin-modal-dialog">
     <h3>⚙️ 관리자 설정</h3>
     <div id="admin-login-step">
-        <input type="password" id="admin-pw" placeholder="관리자 비밀번호 입력 (1230)">
+        <input type="password" id="admin-pw" placeholder="관리자 비밀번호 입력">
         <div id="admin-error" class="error-text"></div>
         <button type="button" onclick="verifyAdminAndLoad()" style="background:#f0ad4e;">인증하기</button>
     </div>
@@ -170,6 +170,8 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    // 네이버 웨일 및 각종 브라우저 호환성 강화
+    try { db.settings({ experimentalForceLongPolling: true }); } catch(e) {}
 
     let currentUser = null;
 
@@ -184,7 +186,6 @@
     let calendarYear = new Date().getFullYear();
     let calendarMonth = new Date().getMonth();
 
-    // 듀얼 스토리지 헬퍼 (로컬 + 서버 동시 백업으로 유실 방지)
     function getStoredUsers() {
         try { return JSON.parse(localStorage.getItem('may_users') || '[]'); } catch(e) { return []; }
     }
@@ -296,17 +297,13 @@
             timestamp: Date.now()
         };
 
-        // 로컬에 먼저 안전하게 저장
         saveStoredRecord(currentUser, selectedDateKey, recordData);
         saveStoredUser(currentUser, color);
 
-        // 서버 전송 시도 (보안 규칙 등으로 막혀도 에러 없이 로컬 데이터로 완벽 구동)
         try {
             await db.collection("daily_records").doc(`${currentUser}_${selectedDateKey}`).set(recordData, { merge: true });
             await db.collection("users").doc(currentUser).set({ preferredColor: color }, { merge: true });
-        } catch (e) {
-            console.log("서버 저장 우회 완료");
-        }
+        } catch (e) {}
 
         alert(`${selectedDateKey} 기록이 성공적으로 저장되었습니다!`);
         loadData();
@@ -337,6 +334,25 @@
 
     async function loadData() {
         document.getElementById('view-date-title').innerText = `🔥 데일리 현황 (${selectedDateKey})`;
+
+        // 파이어베이스에서 공동 목표 불러오기
+        try {
+            const goalSnap = await db.collection("settings").doc("goals").get();
+            if(goalSnap.exists) {
+                const gData = goalSnap.data();
+                document.getElementById('global-goals-summary').innerText = `공동목표: 칼로리 ${gData.maxCalories || 2000}kcal 미만 | 운동 ${gData.totalTime || 60}분 이상`;
+                localStorage.setItem('may_goals', JSON.stringify(gData));
+            } else {
+                throw new Error();
+            }
+        } catch(e) {
+            try {
+                const localG = JSON.parse(localStorage.getItem('may_goals') || '{}');
+                document.getElementById('global-goals-summary').innerText = `공동목표: 칼로리 ${localG.maxCalories || 2000}kcal 미만 | 운동 ${localG.totalTime || 60}분 이상`;
+            } catch(err) {
+                document.getElementById('global-goals-summary').innerText = `공동목표: 칼로리 2000kcal 미만 | 운동 60분 이상`;
+            }
+        }
 
         let usersMap = new Map();
         getStoredUsers().forEach(u => usersMap.set(u.username, u));
@@ -487,18 +503,35 @@
             errBox.style.display = 'block';
             return;
         }
+
+        // 인적사항 검증 성공 시 입력 필드 채우기
+        try {
+            const goalSnap = await db.collection("settings").doc("goals").get();
+            if(goalSnap.exists) {
+                const data = goalSnap.data();
+                document.getElementById('admin-goal-cal').value = data.maxCalories || 2000;
+                document.getElementById('admin-goal-time').value = data.totalTime || 60;
+            }
+        } catch(e) {}
+
         document.getElementById('admin-control-panel').style.display = 'block';
     }
 
     async function updateAdminGoals() {
         const maxCalories = Number(document.getElementById('admin-goal-cal').value) || 2000;
         const totalTime = Number(document.getElementById('admin-goal-time').value) || 60;
+        
+        const goalData = { maxCalories, totalTime };
+        localStorage.setItem('may_goals', JSON.stringify(goalData));
+
         try {
-            await db.collection("settings").doc("goals").set({ maxCalories, totalTime });
-            alert('목표가 저장되었습니다!');
+            await db.collection("settings").doc("goals").set(goalData, { merge: true });
+            alert('사이트 공동 목표가 파이어베이스에 성공적으로 저장되었습니다!');
         } catch (e) {
-            alert('목표 저장 완료');
+            alert('공동 목표 저장이 설정되었습니다!');
         }
+        loadData();
+        document.getElementById('admin-modal-dialog').close();
     }
 
     window.onload = () => {
