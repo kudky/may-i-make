@@ -34,6 +34,10 @@
         .edit-btn { background: #6c757d; font-size: 11px; padding: 4px 8px; width: auto; margin: 0; border-radius: 4px; }
         .add-btn { background: #4caf50; width: 40px; margin: 0; flex-shrink: 0; height: 35px; }
     </style>
+    
+    <!-- 안정적인 Firebase CDN 스크립트 -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -48,7 +52,6 @@
 </header>
 
 <div class="main-layout">
-    <!-- 좌측 3/4: 데일리 화면 -->
     <div class="panel">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <h3 id="view-date-title">🔥 데일리 현황 (기준: 오전 05시 ~ 익일 05시)</h3>
@@ -60,7 +63,6 @@
         
         <hr style="margin: 20px 0; border:0; border-top:1px solid #eee;">
         
-        <!-- 기록 입력 패널 -->
         <div id="record-input-section" style="display:none;">
             <h4 id="input-title">📝 오늘 진척도 및 목표 기록하기</h4>
             <div class="flex-group">
@@ -75,7 +77,6 @@
                 <input type="number" id="input-distance" step="0.1" placeholder="걸은 거리 (km)">
             </div>
             
-            <!-- 운동 부위 및 시간 입력 목록 -->
             <div id="exercise-list-container">
                 <div class="flex-group exercise-row">
                     <select class="input-body-part">
@@ -95,7 +96,6 @@
         </div>
     </div>
 
-    <!-- 우측 1/4: 캘린더 영역 -->
     <div class="panel">
         <h3 id="calendar-title">📅 전체 공통 캘린더</h3>
         <p id="calendar-subtitle" style="font-size: 11px; color: #666;">날짜를 클릭하면 해당 날짜 기록으로 이동합니다.</p>
@@ -142,11 +142,7 @@
     </div>
 </div>
 
-<!-- Firebase SDK 및 로직 -->
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, doc, setDoc, getDocs, getDoc, query, orderBy, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
+<script>
     const firebaseConfig = {
         apiKey: "AIzaSyAYUYgCP_EtInOyc6oN4OuWJw2kSJWNias",
         authDomain: "may-i-make.firebaseapp.com",
@@ -157,8 +153,8 @@
         measurementId: "G-5SLQJGHH3K"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
     let currentUser = null;
     let selectedUserForCalendar = null;
@@ -170,24 +166,24 @@
     }
     let selectedDateKey = getTodayDateKey();
 
-    window.openAuthModal = () => {
+    function openAuthModal() {
         document.getElementById('auth-error').style.display = 'none';
         document.getElementById('auth-modal').style.display = 'flex';
-    };
-    window.closeAuthModal = () => document.getElementById('auth-modal').style.display = 'none';
+    }
+    function closeAuthModal() { document.getElementById('auth-modal').style.display = 'none'; }
 
-    window.openAdminModal = () => {
+    function openAdminModal() {
         document.getElementById('admin-error').style.display = 'none';
         document.getElementById('admin-modal').style.display = 'flex';
-    };
-    window.closeAdminModal = () => {
+    }
+    function closeAdminModal() {
         document.getElementById('admin-modal').style.display = 'none';
         document.getElementById('admin-control-panel').style.display = 'none';
         document.getElementById('admin-login-step').style.display = 'block';
         document.getElementById('admin-pw').value = '';
-    };
+    }
 
-    window.addExerciseRow = () => {
+    function addExerciseRow() {
         const container = document.getElementById('exercise-list-container');
         const div = document.createElement('div');
         div.className = 'flex-group exercise-row';
@@ -203,9 +199,9 @@
             <button type="button" style="background:#dc3545; width:40px; margin:0; flex-shrink:0; height:35px;" onclick="this.parentElement.remove()">-</button>
         `;
         container.appendChild(div);
-    };
+    }
 
-    window.handleLogin = async () => {
+    async function handleLogin() {
         const id = document.getElementById('auth-id').value.trim();
         const pw = document.getElementById('auth-pw').value.trim();
         const errBox = document.getElementById('auth-error');
@@ -218,10 +214,10 @@
         }
 
         try {
-            const userRef = doc(db, "users", id);
-            const userSnap = await getDoc(userRef);
+            const userRef = db.collection("users").doc(id);
+            const userSnap = await userRef.get();
 
-            if(userSnap.exists()) {
+            if(userSnap.exists) {
                 if(userSnap.data().password !== pw) {
                     errBox.innerText = '비밀번호가 일치하지 않습니다.';
                     errBox.style.display = 'block';
@@ -229,8 +225,8 @@
                 }
                 currentUser = id;
             } else {
-                const allUsers = await getDocs(collection(db, "users"));
-                await setDoc(userRef, {
+                const allUsers = await db.collection("users").get();
+                await userRef.set({
                     username: id,
                     password: pw,
                     createdAt: Date.now(),
@@ -245,13 +241,10 @@
             closeAuthModal();
             loadData();
         } catch (e) {
-            currentUser = id;
-            document.getElementById('auth-status').innerHTML = `<b>${currentUser}</b> 님 <button onclick="location.reload()" style="width:auto; padding:2px 8px;">로그아웃</button>`;
-            document.getElementById('record-input-section').style.display = 'block';
-            closeAuthModal();
-            loadData();
+            console.error(e);
+            alert("로그인 처리 중 에러가 발생했습니다.");
         }
-    };
+    }
 
     function estimateCalories(foodText) {
         let defaultCal = 300;
@@ -261,7 +254,7 @@
         return defaultCal;
     }
 
-    window.submitDailyRecord = async () => {
+    async function submitDailyRecord() {
         if(!currentUser) return alert('로그인이 필요합니다.');
         
         const todayGoal = document.getElementById('input-today-goal').value;
@@ -289,34 +282,31 @@
         const movementCalories = Math.round(totalExerciseTime * 5 + steps * 0.04);
 
         try {
-            const recordRef = doc(db, "daily_records", `${currentUser}_${selectedDateKey}`);
-            await setDoc(recordRef, {
+            await db.collection("daily_records").doc(`${currentUser}_${selectedDateKey}`).set({
                 username: currentUser,
                 date: selectedDateKey,
                 todayGoal, food, estCalories, water, steps, distance, youtube, exercises, totalExerciseTime, movementCalories,
                 timestamp: Date.now()
             }, { merge: true });
 
-            try {
-                await updateDoc(doc(db, "users", currentUser), { preferredColor: color });
-            } catch(err) {}
+            await db.collection("users").doc(currentUser).update({ preferredColor: color });
 
-            alert(`${selectedDateKey} 기록이 저장되었습니다!`);
+            alert(`${selectedDateKey} 기록이 성공적으로 저장되었습니다!`);
             loadData();
         } catch (e) {
-            alert('기록이 저장되었습니다.');
-            loadData();
+            console.error(e);
+            alert('기록 저장 중 에러가 발생했습니다.');
         }
-    };
+    }
 
-    window.loadRecordForEdit = async (username, dateKey) => {
+    async function loadRecordForEdit(username, dateKey) {
         if(currentUser !== username) return alert('본인의 기록만 수정할 수 있습니다.');
         selectedDateKey = dateKey;
         document.getElementById('input-title').innerText = `📝 ${selectedDateKey} 기록 수정하기`;
 
         try {
-            const recSnap = await getDoc(doc(db, "daily_records", `${username}_${dateKey}`));
-            if(recSnap.exists()) {
+            const recSnap = await db.collection("daily_records").doc(`${username}_${dateKey}`).get();
+            if(recSnap.exists) {
                 const data = recSnap.data();
                 document.getElementById('input-today-goal').value = data.todayGoal || '';
                 document.getElementById('input-food').value = data.food || '';
@@ -360,16 +350,16 @@
                 }
             }
         } catch(e) {}
-    };
+    }
 
     async function loadData() {
         document.getElementById('view-date-title').innerText = `🔥 데일리 현황 (${selectedDateKey})`;
 
         try {
-            const configSnap = await getDoc(doc(db, "settings", "goals"));
+            const configSnap = await db.collection("settings").doc("goals").get();
             let goalCal = 2000;
             let goalTime = 60;
-            if(configSnap.exists()) {
+            if(configSnap.exists) {
                 goalCal = configSnap.data().maxCalories || 2000;
                 goalTime = configSnap.data().totalTime || 60;
             }
@@ -377,20 +367,24 @@
 
             let usersList = [];
             try {
-                const usersSnap = await getDocs(query(collection(db, "users"), orderBy("orderIndex", "asc")));
+                const usersSnap = await db.collection("users").orderBy("orderIndex", "asc").get();
                 usersSnap.forEach(docSnap => usersList.push(docSnap.data()));
             } catch(e) {
-                usersList = [{ username: currentUser || '사용자', preferredColor: '#ff6b6b' }];
+                if(currentUser) usersList = [{ username: currentUser, preferredColor: '#ff6b6b' }];
             }
 
             const container = document.getElementById('user-rows-container');
             container.innerHTML = '';
 
+            if(usersList.length === 0) {
+                container.innerHTML = '<p style="color:#888;">등록된 사용자가 없습니다. 먼저 로그인/회원가입을 진행해 주세요!</p>';
+            }
+
             for(let user of usersList) {
                 let rec = { todayGoal: '목표 없음', estCalories: 0, totalExerciseTime: 0, food: '기록 없음', exercises: [] };
                 try {
-                    const recSnap = await getDoc(doc(db, "daily_records", `${user.username}_${selectedDateKey}`));
-                    if(recSnap.exists()) rec = recSnap.data();
+                    const recSnap = await db.collection("daily_records").doc(`${user.username}_${selectedDateKey}`).get();
+                    if(recSnap.exists) rec = recSnap.data();
                 } catch(e) {}
 
                 let exSummary = '운동 기록 없음';
@@ -425,13 +419,13 @@
         }
     }
 
-    window.jumpToDate = (dateStr) => {
+    function jumpToDate(dateStr) {
         selectedDateKey = dateStr;
         if(currentUser) {
             loadRecordForEdit(currentUser, dateStr);
         }
         loadData();
-    };
+    }
 
     function renderGlobalCalendar() {
         selectedUserForCalendar = null;
@@ -449,7 +443,7 @@
             dayCell.className = 'cal-day';
             dayCell.innerText = d.getDate();
             dayCell.title = `${dateStr} 기록 보기`;
-            dayCell.style.background = `rgba(255, 107, 107, ${Math.random() * 0.8 + 0.2})`;
+            dayCell.style.background = `rgba(255, 107, 107, 0.4)`;
             
             dayCell.onclick = () => jumpToDate(dateStr);
             grid.appendChild(dayCell);
@@ -462,8 +456,8 @@
 
         let userColor = '#ff6b6b';
         try {
-            const userSnap = await getDoc(doc(db, "users", username));
-            if(userSnap.exists()) userColor = userSnap.data().preferredColor || '#ff6b6b';
+            const userSnap = await db.collection("users").doc(username).get();
+            if(userSnap.exists) userColor = userSnap.data().preferredColor || '#ff6b6b';
         } catch (e) {}
 
         const grid = document.getElementById('calendar-grid');
@@ -479,14 +473,14 @@
             dayCell.innerText = d.getDate();
             dayCell.title = `${dateStr} 기록 보기`;
             dayCell.style.background = userColor;
-            dayCell.style.opacity = Math.random() * 0.7 + 0.3;
+            dayCell.style.opacity = 0.7;
 
             dayCell.onclick = () => jumpToDate(dateStr);
             grid.appendChild(dayCell);
         }
     }
 
-    window.verifyAdminAndLoad = async () => {
+    async function verifyAdminAndLoad() {
         const pw = document.getElementById('admin-pw').value;
         const errBox = document.getElementById('admin-error');
         errBox.style.display = 'none';
@@ -501,7 +495,7 @@
         document.getElementById('admin-control-panel').style.display = 'block';
 
         try {
-            const usersSnap = await getDocs(query(collection(db, "users"), orderBy("orderIndex", "asc")));
+            const usersSnap = await db.collection("users").orderBy("orderIndex", "asc").get();
             const orderContainer = document.getElementById('admin-user-order-container');
             orderContainer.innerHTML = '';
 
@@ -519,37 +513,40 @@
                 orderContainer.appendChild(div);
             });
         } catch (e) {}
-    };
+    }
 
-    window.updateAdminGoals = async () => {
+    async function updateAdminGoals() {
         const maxCalories = Number(document.getElementById('admin-goal-cal').value) || 2000;
         const totalTime = Number(document.getElementById('admin-goal-time').value) || 60;
 
         try {
-            await setDoc(doc(db, "settings", "goals"), { maxCalories, totalTime });
+            await db.collection("settings").doc("goals").set({ maxCalories, totalTime });
             alert('사이트 공동 목표가 변경되었습니다!');
             loadData();
         } catch (e) {
-            alert('목표 저장 완료되었습니다.');
+            alert('목표 저장에 실패했습니다.');
         }
-    };
+    }
 
-    window.saveUserOrders = async () => {
+    async function saveUserOrders() {
         const inputs = document.querySelectorAll('.user-order-input');
         try {
             for(let input of inputs) {
                 const username = input.getAttribute('data-username');
                 const newOrder = Number(input.value) || 1;
-                await updateDoc(doc(db, "users", username), { orderIndex: newOrder });
+                await db.collection("users").doc(username).update({ orderIndex: newOrder });
             }
             alert('사용자 표시 순서가 저장되었습니다!');
             loadData();
         } catch(e) {
-            alert('순서가 저장되었습니다.');
+            alert('순서 저장 중 오류가 발생했습니다.');
         }
-    };
+    }
 
-    loadData();
+    // 초기 데이터 로드
+    window.onload = () => {
+        loadData();
+    };
 </script>
 
 </body>
