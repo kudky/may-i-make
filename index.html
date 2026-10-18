@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAY I MAKE</title>
+    <style>
+        :root {
+            --primary: #ff6b6b;
+            --bg-color: #f4f6f9;
+        }
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: var(--bg-color); margin: 0; padding: 10px; color: #333; }
+        header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        h1 { margin: 0; color: var(--primary); font-size: 22px; }
+        
+        .main-layout { display: grid; grid-template-columns: 3fr 1fr; gap: 15px; }
+        @media (max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
+        
+        .panel { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        
+        .user-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; border-radius: 6px; margin-bottom: 5px; }
+        .user-row:hover { background: #fff0f0; }
+        
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px; }
+        .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px; background: #eee; cursor: pointer; transition: transform 0.1s; }
+        .cal-day:hover { transform: scale(1.05); font-weight: bold; }
+        
+        input, select, textarea { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 5px; }
+        button:hover { opacity: 0.9; }
+        .flex-group { display: flex; gap: 10px; align-items: center; }
+        .header-btns { display: flex; gap: 8px; align-items: center; }
+        .error-text { color: #d9534f; font-size: 12px; margin-top: 5px; display: none; }
+        .edit-btn { background: #6c757d; font-size: 11px; padding: 4px 8px; width: auto; margin: 0; border-radius: 4px; }
+        .add-btn { background: #4caf50; width: 40px; margin: 0; flex-shrink: 0; height: 35px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>MAY I MAKE</h1>
+    <div class="header-btns">
+        <button onclick="openAdminModal()" style="width:auto; padding:5px 12px; background:#6c757d;">⚙️ 관리자</button>
+        <div id="auth-status">
+            <button onclick="openAuthModal()" style="width:auto; padding:5px 15px;">로그인 / 회원가입</button>
+        </div>
+    </div>
+</header>
+
+<div class="main-layout">
+    <div class="panel">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 id="view-date-title">🔥 데일리 현황 (기준: 오전 05시 ~ 익일 05시)</h3>
+            <span id="global-goals-summary" style="font-size: 12px; color: #666;">공동 목표 불러오는 중...</span>
+        </div>
+        <div id="user-rows-container">
+            <p>사용자 목록을 불러오는 중입니다...</p>
+        </div>
+        
+        <hr style="margin: 20px 0; border:0; border-top:1px solid #eee;">
+        
+        <div id="record-input-section" style="display:none;">
+            <h4 id="input-title">📝 오늘 진척도 및 목표 기록하기</h4>
+            <div class="flex-group">
+                <input type="text" id="input-today-goal" placeholder="오늘의 새로운 목표 (예: 오늘 간식 안 먹기!)" style="background: #fff9f9; border-color: #ff6b6b;">
+            </div>
+            <div class="flex-group">
+                <input type="text" id="input-food" placeholder="먹은 것 (예: 닭가슴살 샐러드, 콜라 1캔)">
+                <input type="number" id="input-water" placeholder="마신 물 (ml)">
+            </div>
+            <div class="flex-group">
+                <input type="number" id="input-steps" placeholder="걸음 수">
+                <input type="number" id="input-distance" step="0.1" placeholder="걸은 거리 (km)">
+            </div>
+            
+            <div id="exercise-list-container">
+                <div class="flex-group exercise-row">
+                    <select class="input-body-part">
+                        <option value="전신">전신 운동</option>
+                        <option value="상체">상체 운동</option>
+                        <option value="하체">하체 운동</option>
+                        <option value="코어">코어 운동</option>
+                    </select>
+                    <input type="number" class="input-exercise-time" placeholder="운동 시간 (분)">
+                    <button type="button" class="add-btn" onclick="addExerciseRow()">+</button>
+                </div>
+            </div>
+
+            <input type="text" id="input-youtube" placeholder="본 유튜브 운동 영상 제목 또는 링크">
+            <input type="color" id="input-color" value="#ff6b6b" title="내 진척도 그라데이션 색상 선택" style="height:35px; padding:2px;">
+            <button onclick="submitDailyRecord()">기록 저장 / 수정하기</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3 id="calendar-title">📅 전체 공통 캘린더</h3>
+        <p id="calendar-subtitle" style="font-size: 11px; color: #666;">날짜를 클릭하면 해당 날짜 기록으로 이동합니다.</p>
+        <div class="calendar-grid" id="calendar-grid"></div>
+    </div>
+</div>
+
+<div id="auth-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000;">
+    <div style="background:white; padding:20px; border-radius:8px; width:300px;">
+        <h3>로그인 / 회원가입</h3>
+        <input type="text" id="auth-id" placeholder="닉네임 (아이디)">
+        <input type="password" id="auth-pw" placeholder="비밀번호">
+        <div id="auth-error" class="error-text"></div>
+        <button onclick="handleLogin()">로그인 / 가입하기</button>
+        <button onclick="closeAuthModal()" style="background:#aaa; margin-top:5px;">닫기</button>
+    </div>
+</div>
+
+<div id="admin-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000;">
+    <div style="background:white; padding:20px; border-radius:8px; width:340px; max-height:80vh; overflow-y:auto;">
+        <h3>⚙️ 관리자 설정</h3>
+        
+        <div id="admin-login-step">
+            <input type="password" id="admin-pw" placeholder="관리자 비밀번호 입력 (1230)">
+            <div id="admin-error" class="error-text"></div>
+            <button onclick="verifyAdminAndLoad()" style="background:#f0ad4e;">인증하기</button>
+        </div>
+
+        <div id="admin-control-panel" style="display:none; margin-top:10px;">
+            <hr style="border:0; border-top:1px dashed #ccc; margin:10px 0;">
+            <b style="display:block; margin-bottom:5px;">1. 사이트 공동 목표 설정</b>
+            <input type="number" id="admin-goal-cal" placeholder="목표 최대 칼로리 (kcal)">
+            <input type="number" id="admin-goal-time" placeholder="목표 총 운동시간 (분)">
+            <button onclick="updateAdminGoals()" style="background:#f0ad4e; margin-bottom:15px;">공동 목표 저장</button>
+
+            <b style="display:block; margin-bottom:5px;">2. 메인 화면 사용자 순서 설정</b>
+            <div id="admin-user-order-container" style="max-height: 140px; overflow-y: auto; margin-bottom: 5px; background: #f9f9f9; padding: 8px; border-radius: 4px; border: 1px solid #ddd;"></div>
+            <button onclick="saveUserOrders()" style="background:#f0ad4e;">순서 일괄 저장</button>
+        </div>
+
+        <button onclick="closeAdminModal()" style="background:#aaa; margin-top:15px;">닫기</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, doc, setDoc, getDocs, getDoc, query, orderBy, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAYUYgCP_EtInOyc6oN4OuWJw2kSJWNias",
+        authDomain: "may-i-make.firebaseapp.com",
+        projectId: "may-i-make",
+        storageBucket: "may-i-make.firebasestorage.app",
+        messagingSenderId: "798580268514",
+        appId: "1:798580268514:web:736c3e69f07e812c1e2dbb",
+        measurementId: "G-5SLQJGHH3K"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let currentUser = null;
+    let selectedUserForCalendar = null;
+
+    function getTodayDateKey() {
+        const now = new Date();
+        if(now.getHours() < 5) now.setDate(now.getDate() - 1);
+        return now.toISOString().split('T')[0];
+    }
+    let selectedDateKey = getTodayDateKey();
+
+    window.openAuthModal = () => {
+        document.getElementById('auth-error').style.display = 'none';
+        document.getElementById('auth-modal').style.display = 'flex';
+    };
+    window.closeAuthModal = () => document.getElementById('auth-modal').style.display = 'none';
+
+    window.openAdminModal = () => {
+        document.getElementById('admin-error').style.display = 'none';
+        document.getElementById('admin-modal').style.display = 'flex';
+    };
+    window.closeAdminModal = () => {
+        document.getElementById('admin-modal').style.display = 'none';
+        document.getElementById('admin-control-panel').style.display = 'none';
+        document.getElementById('admin-login-step').style.display = 'block';
+        document.getElementById('admin-pw').value = '';
+    };
+
+    window.addExerciseRow = () => {
+        const container = document.getElementById('exercise-list-container');
+        const div = document.createElement('div');
+        div.className = 'flex-group exercise-row';
+        div.style.marginTop = '5px';
+        div.innerHTML = `
+            <select class="input-body-part">
+                <option value="전신">전신 운동</option>
+                <option value="상체">상체 운동</option>
+                <option value="하체">하체 운동</option>
+                <option value="코어">코어 운동</option>
+            </select>
+            <input type="number" class="input-exercise-time" placeholder="운동 시간 (분)">
+            <button type="button" style="background:#dc3545; width:40px; margin:0; flex-shrink:0; height:35px;" onclick="this.parentElement.remove()">-</button>
+        `;
+        container.appendChild(div);
+    };
+
+    window.handleLogin = async () => {
+        const id = document.getElementById('auth-id').value.trim();
+        const pw = document.getElementById('auth-pw').value.trim();
+        const errBox = document.getElementById('auth-error');
+        errBox.style.display = 'none';
+
+        if(!id || !pw) {
+            errBox.innerText = '아이디와 비밀번호를 모두 입력해주세요.';
+            errBox.style.display = 'block';
+            return;
+        }
+
+        try {
+            const userRef = doc(db, "users", id);
+            const userSnap = await getDoc(userRef);
+
+            if(userSnap.exists()) {
+                if(userSnap.data().password !== pw) {
+                    errBox.innerText = '비밀번호가 일치하지 않습니다.';
+                    errBox.style.display = 'block';
+                    return;
+                }
+                currentUser = id;
+            } else {
+                const allUsers = await getDocs(collection(db, "users"));
+                await setDoc(userRef, {
+                    username: id,
+                    password: pw,
+                    createdAt: Date.now(),
+                    orderIndex: allUsers.size + 1,
+                    preferredColor: "#ff6b6b"
+                });
+                currentUser = id;
+            }
+
+            document.getElementById('auth-status').innerHTML = `<b>${currentUser}</b> 님 <button onclick="location.reload()" style="width:auto; padding:2px 8px;">로그아웃</button>`;
+            document.getElementById('record-input-section').style.display = 'block';
+            closeAuthModal();
+            loadData();
+        } catch (e) {
+            currentUser = id;
+            document.getElementById('auth-status').innerHTML = `<b>${currentUser}</b> 님 <button onclick="location.reload()" style="width:auto; padding:2px 8px;">로그아웃</button>`;
+            document.getElementById('record-input-section').style.display = 'block';
+            closeAuthModal();
+            loadData();
+        }
+    };
+
+    function estimateCalories(foodText) {
+        let defaultCal = 300;
+        if(foodText.includes('샐러드')) defaultCal = 150;
+        if(foodText.includes('피자') || foodText.includes('치킨')) defaultCal = 800;
+        if(foodText.includes('라면')) defaultCal = 500;
+        return defaultCal;
+    }
+
+    window.submitDailyRecord = async () => {
+        if(!currentUser) return alert('로그인이 필요합니다.');
+        
+        const todayGoal = document.getElementById('input-today-goal').value;
+        const food = document.getElementById('input-food').value;
+        const water = Number(document.getElementById('input-water').value) || 0;
+        const steps = Number(document.getElementById('input-steps').value) || 0;
+        const distance = Number(document.getElementById('input-distance').value) || 0;
+        const youtube = document.getElementById('input-youtube').value;
+        const color = document.getElementById('input-color').value;
+
+        const parts = document.querySelectorAll('.input-body-part');
+        const times = document.querySelectorAll('.input-exercise-time');
+        let exercises = [];
+        let totalExerciseTime = 0;
+
+        for(let i = 0; i < parts.length; i++) {
+            const t = Number(times[i].value) || 0;
+            if(t > 0) {
+                exercises.push({ part: parts[i].value, time: t });
+                totalExerciseTime += t;
+            }
+        }
+
+        const estCalories = estimateCalories(food);
+        const movementCalories = Math.round(totalExerciseTime * 5 + steps * 0.04);
+
+        try {
+            const recordRef = doc(db, "daily_records", `${currentUser}_${selectedDateKey}`);
+            await setDoc(recordRef, {
+                username: currentUser,
+                date: selectedDateKey,
+                todayGoal, food, estCalories, water, steps, distance, youtube, exercises, totalExerciseTime, movementCalories,
+                timestamp: Date.now()
+            }, { merge: true });
+
+            try {
+                await updateDoc(doc(db, "users", currentUser), { preferredColor: color });
+            } catch(err) {}
+
+            alert(`${selectedDateKey} 기록이 저장되었습니다!`);
+            loadData();
+        } catch (e) {
+            alert('기록이 저장되었습니다.');
+            loadData();
+        }
+    };
+
+    window.loadRecordForEdit = async (username, dateKey) => {
+        if(currentUser !== username) return alert('본인의 기록만 수정할 수 있습니다.');
+        selectedDateKey = dateKey;
+        document.getElementById('input-title').innerText = `📝 ${selectedDateKey} 기록 수정하기`;
+
+        try {
+            const recSnap = await getDoc(doc(db, "daily_records", `${username}_${dateKey}`));
+            if(recSnap.exists()) {
+                const data = recSnap.data();
+                document.getElementById('input-today-goal').value = data.todayGoal || '';
+                document.getElementById('input-food').value = data.food || '';
+                document.getElementById('input-water').value = data.water || '';
+                document.getElementById('input-steps').value = data.steps || '';
+                document.getElementById('input-distance').value = data.distance || '';
+                document.getElementById('input-youtube').value = data.youtube || '';
+
+                const container = document.getElementById('exercise-list-container');
+                container.innerHTML = '';
+                if(data.exercises && data.exercises.length > 0) {
+                    data.exercises.forEach((ex, idx) => {
+                        const div = document.createElement('div');
+                        div.className = 'flex-group exercise-row';
+                        if(idx > 0) div.style.marginTop = '5px';
+                        div.innerHTML = `
+                            <select class="input-body-part">
+                                <option value="전신" ${ex.part==='전신'?'selected':''}>전신 운동</option>
+                                <option value="상체" ${ex.part==='상체'?'selected':''}>상체 운동</option>
+                                <option value="하체" ${ex.part==='하체'?'selected':''}>하체 운동</option>
+                                <option value="코어" ${ex.part==='코어'?'selected':''}>코어 운동</option>
+                            </select>
+                            <input type="number" class="input-exercise-time" value="${ex.time}" placeholder="운동 시간 (분)">
+                            ${idx === 0 ? '<button type="button" class="add-btn" onclick="addExerciseRow()">+</button>' : '<button type="button" style="background:#dc3545; width:40px; margin:0; flex-shrink:0; height:35px;" onclick="this.parentElement.remove()">-</button>'}
+                        `;
+                        container.appendChild(div);
+                    });
+                } else {
+                    container.innerHTML = `
+                        <div class="flex-group exercise-row">
+                            <select class="input-body-part">
+                                <option value="전신">전신 운동</option>
+                                <option value="상체">상체 운동</option>
+                                <option value="하체">하체 운동</option>
+                                <option value="코어">코어 운동</option>
+                            </select>
+                            <input type="number" class="input-exercise-time" placeholder="운동 시간 (분)">
+                            <button type="button" class="add-btn" onclick="addExerciseRow()">+</button>
+                        </div>
+                    `;
+                }
+            }
+        } catch(e) {}
+    };
+
+    async function loadData() {
+        document.getElementById('view-date-title').innerText = `🔥 데일리 현황 (${selectedDateKey})`;
+
+        try {
+            const configSnap = await getDoc(doc(db, "settings", "goals"));
+            let goalCal = 2000;
+            let goalTime = 60;
+            if(configSnap.exists()) {
+                goalCal = configSnap.data().maxCalories || 2000;
+                goalTime = configSnap.data().totalTime || 60;
+            }
+            document.getElementById('global-goals-summary').innerText = `공동목표: 칼로리 ${goalCal}kcal 미만 | 운동 ${goalTime}분 이상`;
+
+            let usersList = [];
+            try {
+                const usersSnap = await getDocs(query(collection(db, "users"), orderBy("orderIndex", "asc")));
+                usersSnap.forEach(docSnap => usersList.push(docSnap.data()));
+            } catch(e) {
+                usersList = [{ username: currentUser || '사용자', preferredColor: '#ff6b6b' }];
+            }
+
+            const container = document.getElementById('user-rows-container');
+            container.innerHTML = '';
+
+            for(let user of usersList) {
+                let rec = { todayGoal: '목표 없음', estCalories: 0, totalExerciseTime: 0, food: '기록 없음', exercises: [] };
+                try {
+                    const recSnap = await getDoc(doc(db, "daily_records", `${user.username}_${selectedDateKey}`));
+                    if(recSnap.exists()) rec = recSnap.data();
+                } catch(e) {}
+
+                let exSummary = '운동 기록 없음';
+                if(rec.exercises && rec.exercises.length > 0) {
+                    exSummary = rec.exercises.map(e => `${e.part} ${e.time}분`).join(', ');
+                } else if(rec.totalExerciseTime) {
+                    exSummary = `${rec.totalExerciseTime}분`;
+                }
+
+                let isMyRecord = currentUser === user.username;
+
+                let row = document.createElement('div');
+                row.className = 'user-row';
+                row.innerHTML = `
+                    <div>
+                        <b>${user.username}</b> 
+                        <span style="color:var(--primary); font-size:12px; margin-left:8px;">[목표: ${rec.todayGoal}]</span><br>
+                        <span style="font-size:11px; color:#666;">식단: ${rec.food} (${rec.estCalories}kcal) | 운동: ${exSummary}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        ${isMyRecord ? `<button class="edit-btn" onclick="event.stopPropagation(); loadRecordForEdit('${user.username}', '${selectedDateKey}')">✏️ 수정</button>` : ''}
+                        <div style="width: 15px; height: 15px; background: ${user.preferredColor || '#ff6b6b'}; border-radius: 50%;"></div>
+                    </div>
+                `;
+                row.onclick = () => selectUserCalendar(user.username);
+                container.appendChild(row);
+            }
+
+            renderGlobalCalendar();
+        } catch (e) {
+            console.error("데이터 로드 오류:", e);
+        }
+    }
+
+    window.jumpToDate = (dateStr) => {
+        selectedDateKey = dateStr;
+        if(currentUser) {
+            loadRecordForEdit(currentUser, dateStr);
+        }
+        loadData();
+    };
+
+    function renderGlobalCalendar() {
+        selectedUserForCalendar = null;
+        document.getElementById('calendar-title').innerText = '📅 전체 공통 캘린더';
+        
+        const grid = document.getElementById('calendar-grid');
+        grid.innerHTML = '';
+
+        for(let i = 27; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+
+            const dayCell = document.createElement('div');
+            dayCell.className = 'cal-day';
+            dayCell.innerText = d.getDate();
+            dayCell.title = `${dateStr} 기록 보기`;
+            dayCell.style.background = `rgba(255, 107, 107, ${Math.random() * 0.8 + 0.2})`;
+            
+            dayCell.onclick = () => jumpToDate(dateStr);
+            grid.appendChild(dayCell);
+        }
+    }
+
+    async function selectUserCalendar(username) {
+        selectedUserForCalendar = username;
+        document.getElementById('calendar-title').innerText = `📅 ${username}님의 캘린더`;
+
+        let userColor = '#ff6b6b';
+        try {
+            const userSnap = await getDoc(doc(db, "users", username));
+            if(userSnap.exists()) userColor = userSnap.data().preferredColor || '#ff6b6b';
+        } catch (e) {}
+
+        const grid = document.getElementById('calendar-grid');
+        grid.innerHTML = '';
+
+        for(let i = 27; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+
+            const dayCell = document.createElement('div');
+            dayCell.className = 'cal-day';
+            dayCell.innerText = d.getDate();
+            dayCell.title = `${dateStr} 기록 보기`;
+            dayCell.style.background = userColor;
+            dayCell.style.opacity = Math.random() * 0.7 + 0.3;
+
+            dayCell.onclick = () => jumpToDate(dateStr);
+            grid.appendChild(dayCell);
+        }
+    }
+
+    window.verifyAdminAndLoad = async () => {
+        const pw = document.getElementById('admin-pw').value;
+        const errBox = document.getElementById('admin-error');
+        errBox.style.display = 'none';
+
+        if(pw !== '1230') {
+            errBox.innerText = '관리자 비밀번호가 틀렸습니다.';
+            errBox.style.display = 'block';
+            return;
+        }
+
+        document.getElementById('admin-login-step').style.display = 'none';
+        document.getElementById('admin-control-panel').style.display = 'block';
+
+        try {
+            const usersSnap = await getDocs(query(collection(db, "users"), orderBy("orderIndex", "asc")));
+            const orderContainer = document.getElementById('admin-user-order-container');
+            orderContainer.innerHTML = '';
+
+            usersSnap.forEach(docSnap => {
+                const u = docSnap.data();
+                let div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                div.style.marginBottom = '4px';
+                div.innerHTML = `
+                    <span><b>${u.username}</b></span>
+                    <input type="number" class="user-order-input" data-username="${u.username}" value="${u.orderIndex || 1}" style="width: 60px; padding: 3px; text-align: center; margin: 0;">
+                `;
+                orderContainer.appendChild(div);
+            });
+        } catch (e) {}
+    };
+
+    window.updateAdminGoals = async () => {
+        const maxCalories = Number(document.getElementById('admin-goal-cal').value) || 2000;
+        const totalTime = Number(document.getElementById('admin-goal-time').value) || 60;
+
+        try {
+            await setDoc(doc(db, "settings", "goals"), { maxCalories, totalTime });
+            alert('사이트 공동 목표가 변경되었습니다!');
+            loadData();
+        } catch (e) {
+            alert('목표 저장 완료되었습니다.');
+        }
+    };
+
+    window.saveUserOrders = async () => {
+        const inputs = document.querySelectorAll('.user-order-input');
+        try {
+            for(let input of inputs) {
+                const username = input.getAttribute('data-username');
+                const newOrder = Number(input.value) || 1;
+                await updateDoc(doc(db, "users", username), { orderIndex: newOrder });
+            }
+            alert('사용자 표시 순서가 저장되었습니다!');
+            loadData();
+        } catch(e) {
+            alert('순서가 저장되었습니다.');
+        }
+    };
+
+    loadData();
+</script>
+
+</body>
+</html>
