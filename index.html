@@ -149,7 +149,6 @@
     const db = firebase.firestore();
 
     let currentUser = null;
-    let localMemory = {};
 
     function getTodayDateKey() {
         const now = new Date();
@@ -157,6 +156,39 @@
         return now.toISOString().split('T')[0];
     }
     let selectedDateKey = getTodayDateKey();
+
+    // 로컬 스토리지 연동 헬퍼 함수들
+    function getStoredUsers() {
+        try {
+            return JSON.parse(localStorage.getItem('may_users') || '[]');
+        } catch(e) { return []; }
+    }
+
+    function saveStoredUser(username, color) {
+        let users = getStoredUsers();
+        let existing = users.find(u => u.username === username);
+        if(existing) {
+            existing.preferredColor = color || existing.preferredColor;
+        } else {
+            users.push({ username, preferredColor: color || '#ff6b6b' });
+        }
+        localStorage.setItem('may_users', JSON.stringify(users));
+    }
+
+    function getStoredRecord(username, dateKey) {
+        try {
+            const records = JSON.parse(localStorage.getItem('may_records') || '{}');
+            return records[`${username}_${dateKey}`] || null;
+        } catch(e) { return null; }
+    }
+
+    function saveStoredRecord(username, dateKey, data) {
+        try {
+            let records = JSON.parse(localStorage.getItem('may_records') || '{}');
+            records[`${username}_${dateKey}`] = data;
+            localStorage.setItem('may_records', JSON.stringify(records));
+        } catch(e) {}
+    }
 
     function addExerciseRow() {
         const container = document.getElementById('exercise-list-container');
@@ -189,11 +221,13 @@
         }
 
         currentUser = id;
+        saveStoredUser(id, '#ff6b6b');
+
         document.getElementById('auth-status').innerHTML = `<b>${currentUser}</b> 님 <button type="button" onclick="location.reload()" style="width:auto; padding:2px 8px;">로그아웃</button>`;
         document.getElementById('record-input-section').style.display = 'block';
         document.getElementById('auth-modal-dialog').close();
         
-        // 백그라운드 저장 시도
+        // 파이어베이스 백그라운드 동기화 시도
         db.collection("users").doc(id).set({ username: id, password: pw, createdAt: Date.now() }, { merge: true }).catch(() => {});
         loadData();
     }
@@ -238,14 +272,15 @@
             timestamp: Date.now()
         };
 
-        // 로컬 메모리에 즉시 반영 (블로킹 방지)
-        localMemory[`${currentUser}_${selectedDateKey}`] = recordData;
+        // 브라우저 로컬 스토리지에 영구 저장 (새로고침해도 안 날아감)
+        saveStoredRecord(currentUser, selectedDateKey, recordData);
+        saveStoredUser(currentUser, color);
 
-        // 파이어베이스에 저장
+        // 파이어베이스 백그라운드 전송
         db.collection("daily_records").doc(`${currentUser}_${selectedDateKey}`).set(recordData, { merge: true }).catch(() => {});
         db.collection("users").doc(currentUser).set({ preferredColor: color }, { merge: true }).catch(() => {});
 
-        alert(`${selectedDateKey} 기록이 저장되었습니다!`);
+        alert(`${selectedDateKey} 기록이 영구 저장되었습니다!`);
         loadData();
     }
 
@@ -254,7 +289,7 @@
         selectedDateKey = dateKey;
         document.getElementById('input-title').innerText = `📝 ${selectedDateKey} 기록 수정하기`;
 
-        let data = localMemory[`${username}_${dateKey}`];
+        let data = getStoredRecord(username, dateKey);
         if(!data) {
             try {
                 const recSnap = await db.collection("daily_records").doc(`${username}_${dateKey}`).get();
@@ -275,16 +310,24 @@
     async function loadData() {
         document.getElementById('view-date-title').innerText = `🔥 데일리 현황 (${selectedDateKey})`;
 
-        let usersList = [];
+        // 로컬 스토리지에서 먼저 사용자 목록 불러오기
+        let usersMap = new Map();
+        getStoredUsers().forEach(u => usersMap.set(u.username, u));
+
+        // 파이어베이스에서도 가져와서 합치기 시도
         try {
             const usersSnap = await db.collection("users").get();
-            usersSnap.forEach(docSnap => usersList.push(docSnap.data()));
+            usersSnap.forEach(docSnap => {
+                const u = docSnap.data();
+                if(u.username) usersMap.set(u.username, { username: u.username, preferredColor: u.preferredColor || '#ff6b6b' });
+            });
         } catch(e) {}
 
-        if(currentUser && !usersList.some(u => u.username === currentUser)) {
-            usersList.push({ username: currentUser, preferredColor: '#ff6b6b' });
+        if(currentUser && !usersMap.has(currentUser)) {
+            usersMap.set(currentUser, { username: currentUser, preferredColor: '#ff6b6b' });
         }
 
+        let usersList = Array.from(usersMap.values());
         const container = document.getElementById('user-rows-container');
         container.innerHTML = '';
 
@@ -293,12 +336,15 @@
         }
 
         for(let user of usersList) {
-            let rec = localMemory[`${user.username}_${selectedDateKey}`] || { todayGoal: '목표 없음', estCalories: 0, totalExerciseTime: 0, food: '기록 없음' };
-            if(!localMemory[`${user.username}_${selectedDateKey}`]) {
+            let rec = getStoredRecord(user.username, selectedDateKey);
+            if(!rec) {
                 try {
                     const recSnap = await db.collection("daily_records").doc(`${user.username}_${selectedDateKey}`).get();
                     if(recSnap.exists) rec = recSnap.data();
                 } catch(e) {}
+            }
+            if(!rec) {
+                rec = { todayGoal: '목표 없음', estCalories: 0, totalExerciseTime: 0, food: '기록 없음' };
             }
 
             let isMyRecord = currentUser === user.username;
