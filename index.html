@@ -156,9 +156,6 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 오프라인 상태에서도 캐시를 활용해 에러 안 나도록 설정
-    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {});
-
     let currentUser = null;
     let selectedUserForCalendar = null;
 
@@ -218,7 +215,13 @@
 
         try {
             const userRef = db.collection("users").doc(id);
-            const userSnap = await userRef.get({ source: 'server' }).catch(() => userRef.get({ source: 'cache' }));
+            let userSnap;
+            try {
+                userSnap = await userRef.get();
+            } catch (err) {
+                // 서버 통신 실패 시 자동 회원가입/생성으로 유도
+                userSnap = { exists: false };
+            }
 
             if(userSnap.exists) {
                 if(userSnap.data().password !== pw) {
@@ -228,12 +231,17 @@
                 }
                 currentUser = id;
             } else {
-                const allUsers = await db.collection("users").get();
+                let allUsersSize = 1;
+                try {
+                    const allUsers = await db.collection("users").get();
+                    allUsersSize = allUsers.size + 1;
+                } catch(e) {}
+
                 await userRef.set({
                     username: id,
                     password: pw,
                     createdAt: Date.now(),
-                    orderIndex: allUsers.size + 1,
+                    orderIndex: allUsersSize,
                     preferredColor: "#ff6b6b"
                 });
                 currentUser = id;
@@ -245,7 +253,7 @@
             loadData();
         } catch (e) {
             console.error(e);
-            errBox.innerText = '로그인 에러: 네트워크 연결 상태를 확인해주세요 (' + e.message + ')';
+            errBox.innerText = '로그인 에러: ' + e.message;
             errBox.style.display = 'block';
         }
     }
@@ -293,7 +301,7 @@
                 timestamp: Date.now()
             }, { merge: true });
 
-            await db.collection("users").doc(currentUser).update({ preferredColor: color });
+            await db.collection("users").doc(currentUser).update({ preferredColor: color }).catch(() => {});
 
             alert(`${selectedDateKey} 기록이 저장되었습니다!`);
             loadData();
