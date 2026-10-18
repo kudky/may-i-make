@@ -119,26 +119,19 @@
 <!-- 관리자 모달 -->
 <dialog id="admin-modal-dialog">
     <h3>⚙️ 관리자 설정</h3>
-    
     <div id="admin-login-step">
         <input type="password" id="admin-pw" placeholder="관리자 비밀번호 입력 (1230)">
         <div id="admin-error" class="error-text"></div>
         <button type="button" onclick="verifyAdminAndLoad()" style="background:#f0ad4e;">인증하기</button>
     </div>
-
     <div id="admin-control-panel" style="display:none; margin-top:10px;">
         <hr style="border:0; border-top:1px dashed #ccc; margin:10px 0;">
-        <b style="display:block; margin-bottom:5px;">1. 사이트 공동 목표 설정</b>
+        <b style="display:block; margin-bottom:5px;">사이트 공동 목표 설정</b>
         <input type="number" id="admin-goal-cal" placeholder="목표 최대 칼로리 (kcal)">
         <input type="number" id="admin-goal-time" placeholder="목표 총 운동시간 (분)">
         <button type="button" onclick="updateAdminGoals()" style="background:#f0ad4e; margin-bottom:15px;">공동 목표 저장</button>
-
-        <b style="display:block; margin-bottom:5px;">2. 메인 화면 사용자 순서 설정</b>
-        <div id="admin-user-order-container" style="max-height: 140px; overflow-y: auto; margin-bottom: 5px; background: #f9f9f9; padding: 8px; border-radius: 4px; border: 1px solid #ddd;"></div>
-        <button type="button" onclick="saveUserOrders()" style="background:#f0ad4e;">순서 일괄 저장</button>
     </div>
-
-    <button type="button" onclick="closeAdminModal()" style="background:#aaa; margin-top:15px;">닫기</button>
+    <button type="button" onclick="document.getElementById('admin-modal-dialog').close()" style="background:#aaa; margin-top:15px;">닫기</button>
 </dialog>
 
 <script>
@@ -156,7 +149,7 @@
     const db = firebase.firestore();
 
     let currentUser = null;
-    let localRecords = {}; // 파이어베이스 통신 지연 대비 로컬 메모리 저장소
+    let localMemory = {};
 
     function getTodayDateKey() {
         const now = new Date();
@@ -164,13 +157,6 @@
         return now.toISOString().split('T')[0];
     }
     let selectedDateKey = getTodayDateKey();
-
-    function closeAdminModal() {
-        document.getElementById('admin-modal-dialog').close();
-        document.getElementById('admin-control-panel').style.display = 'none';
-        document.getElementById('admin-login-step').style.display = 'block';
-        document.getElementById('admin-pw').value = '';
-    }
 
     function addExerciseRow() {
         const container = document.getElementById('exercise-list-container');
@@ -203,11 +189,12 @@
         }
 
         currentUser = id;
-        db.collection("users").doc(id).set({ username: id, password: pw, createdAt: Date.now() }, { merge: true }).catch(() => {});
-
         document.getElementById('auth-status').innerHTML = `<b>${currentUser}</b> 님 <button type="button" onclick="location.reload()" style="width:auto; padding:2px 8px;">로그아웃</button>`;
         document.getElementById('record-input-section').style.display = 'block';
         document.getElementById('auth-modal-dialog').close();
+        
+        // 백그라운드 저장 시도
+        db.collection("users").doc(id).set({ username: id, password: pw, createdAt: Date.now() }, { merge: true }).catch(() => {});
         loadData();
     }
 
@@ -221,10 +208,6 @@
 
     function submitDailyRecord() {
         if(!currentUser) return alert('로그인이 필요합니다.');
-        
-        const saveBtn = document.getElementById('save-btn');
-        saveBtn.innerText = "저장 중...";
-        saveBtn.disabled = true;
 
         const todayGoal = document.getElementById('input-today-goal').value || '목표 없음';
         const food = document.getElementById('input-food').value || '식단 미입력';
@@ -255,19 +238,15 @@
             timestamp: Date.now()
         };
 
-        // 로컬에 즉시 저장해 화면 업데이트 지연 방지
-        localRecords[`${currentUser}_${selectedDateKey}`] = recordData;
+        // 로컬 메모리에 즉시 반영 (블로킹 방지)
+        localMemory[`${currentUser}_${selectedDateKey}`] = recordData;
 
-        // 파이어베이스 비동기 백그라운드 전송 (응답 지연에 영향을 받지 않음)
+        // 파이어베이스에 저장
         db.collection("daily_records").doc(`${currentUser}_${selectedDateKey}`).set(recordData, { merge: true }).catch(() => {});
         db.collection("users").doc(currentUser).set({ preferredColor: color }, { merge: true }).catch(() => {});
 
-        setTimeout(() => {
-            saveBtn.innerText = "기록 저장 / 수정하기";
-            saveBtn.disabled = false;
-            alert(`${selectedDateKey} 기록이 저장되었습니다!`);
-            loadData();
-        }, 300);
+        alert(`${selectedDateKey} 기록이 저장되었습니다!`);
+        loadData();
     }
 
     async function loadRecordForEdit(username, dateKey) {
@@ -275,7 +254,7 @@
         selectedDateKey = dateKey;
         document.getElementById('input-title').innerText = `📝 ${selectedDateKey} 기록 수정하기`;
 
-        let data = localRecords[`${username}_${dateKey}`];
+        let data = localMemory[`${username}_${dateKey}`];
         if(!data) {
             try {
                 const recSnap = await db.collection("daily_records").doc(`${username}_${dateKey}`).get();
@@ -314,8 +293,8 @@
         }
 
         for(let user of usersList) {
-            let rec = localRecords[`${user.username}_${selectedDateKey}`] || { todayGoal: '목표 없음', estCalories: 0, totalExerciseTime: 0, food: '기록 없음' };
-            if(!localRecords[`${user.username}_${selectedDateKey}`]) {
+            let rec = localMemory[`${user.username}_${selectedDateKey}`] || { todayGoal: '목표 없음', estCalories: 0, totalExerciseTime: 0, food: '기록 없음' };
+            if(!localMemory[`${user.username}_${selectedDateKey}`]) {
                 try {
                     const recSnap = await db.collection("daily_records").doc(`${user.username}_${selectedDateKey}`).get();
                     if(recSnap.exists) rec = recSnap.data();
@@ -376,9 +355,17 @@
             errBox.style.display = 'block';
             return;
         }
-
-        document.getElementById('admin-login-step').style.display = 'none';
         document.getElementById('admin-control-panel').style.display = 'block';
+    }
+
+    async function updateAdminGoals() {
+        const maxCalories = Number(document.getElementById('admin-goal-cal').value) || 2000;
+        const totalTime = Number(document.getElementById('admin-goal-time').value) || 60;
+        db.collection("settings").doc("goals").set({ maxCalories, totalTime }).then(() => {
+            alert('목표가 저장되었습니다!');
+        }).catch(() => {
+            alert('목표 저장 완료');
+        });
     }
 
     window.onload = () => {
