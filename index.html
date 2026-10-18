@@ -13,7 +13,7 @@
         header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; }
         h1 { margin: 0; color: var(--primary); font-size: 22px; }
         
-        .main-layout { display: grid; grid-template-columns: 3fr 1fr; gap: 15px; }
+        .main-layout { display: grid; grid-template-columns: 2.5fr 1.5fr; gap: 15px; }
         @media (max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
         
         .panel { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
@@ -21,9 +21,18 @@
         .user-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; border-radius: 6px; margin-bottom: 5px; }
         .user-row:hover { background: #fff0f0; }
         
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px; }
-        .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px; background: #eee; cursor: pointer; transition: transform 0.1s; }
-        .cal-day:hover { transform: scale(1.05); font-weight: bold; }
+        /* 새로운 월별 캘린더 스타일 */
+        .calendar-header-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: bold; font-size: 15px; }
+        .calendar-header-nav button { background: #eee; color: #333; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; width: auto; margin: 0; font-size: 12px; }
+        .calendar-header-nav button:hover { background: #ddd; }
+        
+        .calendar-table { width: 100%; border-collapse: collapse; text-align: center; }
+        .calendar-table th { font-size: 12px; color: #777; padding-bottom: 6px; }
+        .calendar-table td { padding: 4px; }
+        .cal-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; border-radius: 6px; background: #fafafa; cursor: pointer; transition: all 0.1s; border: 1px solid #eee; position: relative; }
+        .cal-day:hover { background: #fff0f0; border-color: var(--primary); transform: scale(1.05); font-weight: bold; }
+        .cal-day.empty { background: transparent; border: none; cursor: default; }
+        .cal-day.today { border: 2px solid var(--primary); font-weight: bold; }
         
         input, select, textarea { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
         button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 5px; }
@@ -99,10 +108,23 @@
         </div>
     </div>
 
+    <!-- 새로운 월별 캘린더 패널 -->
     <div class="panel">
-        <h3 id="calendar-title">📅 전체 공통 캘린더</h3>
-        <p id="calendar-subtitle" style="font-size: 11px; color: #666;">날짜를 클릭하면 해당 날짜 기록으로 이동합니다.</p>
-        <div class="calendar-grid" id="calendar-grid"></div>
+        <div class="calendar-header-nav">
+            <button type="button" onclick="changeMonth(-1)">◀ 이전달</button>
+            <span id="calendar-month-title">2026년 10월</span>
+            <button type="button" onclick="changeMonth(1)">다음달 ▶</button>
+        </div>
+        <table class="calendar-table">
+            <thead>
+                <tr>
+                    <th style="color:#d9534f;">일</th>
+                    <th>월</th><th>화</th><th>수</th><th>목</th><th>금</th>
+                    <th style="color:#0275d8;">토</th>
+                </tr>
+            </thead>
+            <tbody id="calendar-grid-body"></tbody>
+        </table>
     </div>
 </div>
 
@@ -155,13 +177,15 @@
         if(now.getHours() < 5) now.setDate(now.getDate() - 1);
         return now.toISOString().split('T')[0];
     }
+    
     let selectedDateKey = getTodayDateKey();
+    
+    // 캘린더 연/월 상태 관리
+    let calendarYear = new Date().getFullYear();
+    let calendarMonth = new Date().getMonth(); // 0~11
 
-    // 로컬 스토리지 연동 헬퍼 함수들
     function getStoredUsers() {
-        try {
-            return JSON.parse(localStorage.getItem('may_users') || '[]');
-        } catch(e) { return []; }
+        try { return JSON.parse(localStorage.getItem('may_users') || '[]'); } catch(e) { return []; }
     }
 
     function saveStoredUser(username, color) {
@@ -227,7 +251,6 @@
         document.getElementById('record-input-section').style.display = 'block';
         document.getElementById('auth-modal-dialog').close();
         
-        // 파이어베이스 백그라운드 동기화 시도
         db.collection("users").doc(id).set({ username: id, password: pw, createdAt: Date.now() }, { merge: true }).catch(() => {});
         loadData();
     }
@@ -272,11 +295,9 @@
             timestamp: Date.now()
         };
 
-        // 브라우저 로컬 스토리지에 영구 저장 (새로고침해도 안 날아감)
         saveStoredRecord(currentUser, selectedDateKey, recordData);
         saveStoredUser(currentUser, color);
 
-        // 파이어베이스 백그라운드 전송
         db.collection("daily_records").doc(`${currentUser}_${selectedDateKey}`).set(recordData, { merge: true }).catch(() => {});
         db.collection("users").doc(currentUser).set({ preferredColor: color }, { merge: true }).catch(() => {});
 
@@ -310,11 +331,9 @@
     async function loadData() {
         document.getElementById('view-date-title').innerText = `🔥 데일리 현황 (${selectedDateKey})`;
 
-        // 로컬 스토리지에서 먼저 사용자 목록 불러오기
         let usersMap = new Map();
         getStoredUsers().forEach(u => usersMap.set(u.username, u));
 
-        // 파이어베이스에서도 가져와서 합치기 시도
         try {
             const usersSnap = await db.collection("users").get();
             usersSnap.forEach(docSnap => {
@@ -365,30 +384,106 @@
             container.appendChild(row);
         }
 
-        renderGlobalCalendar();
+        renderMonthlyCalendar();
     }
 
-    function renderGlobalCalendar() {
-        const grid = document.getElementById('calendar-grid');
-        grid.innerHTML = '';
-
-        for(let i = 27; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0];
-
-            const dayCell = document.createElement('div');
-            dayCell.className = 'cal-day';
-            dayCell.innerText = d.getDate();
-            dayCell.title = `${dateStr} 기록 보기`;
-            dayCell.style.background = `rgba(255, 107, 107, 0.4)`;
-            
-            dayCell.onclick = () => {
-                selectedDateKey = dateStr;
-                loadData();
-            };
-            grid.appendChild(dayCell);
+    // 월 변경 함수 (화살표 클릭 시)
+    function changeMonth(direction) {
+        calendarMonth += direction;
+        if(calendarMonth > 11) {
+            calendarMonth = 0;
+            calendarYear++;
+        } else if(calendarMonth < 0) {
+            calendarMonth = 11;
+            calendarYear--;
         }
+        renderMonthlyCalendar();
+    }
+
+    // 진짜 캘린더 격자 렌더링
+    function renderMonthlyCalendar() {
+        const titleEl = document.getElementById('calendar-month-title');
+        titleEl.innerText = `${calendarYear}년 ${calendarMonth + 1}월`;
+
+        const tbody = document.getElementById('calendar-grid-body');
+        tbody.innerHTML = '';
+
+        const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay(); // 해당 월 1일의 요일 (0: 일요일)
+        const lastDay = new Date(calendarYear, calendarMonth + 1, 0).getDate(); // 해당 월의 총 일수
+
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        let row = document.createElement('tr');
+        let dayCount = 1;
+
+        // 첫 주 빈 칸 채우기
+        for(let i = 0; i < firstDayIndex; i++) {
+            let td = document.createElement('td');
+            td.className = 'cal-day empty';
+            row.appendChild(td);
+        }
+
+        // 날짜 채우기
+        for(let i = firstDayIndex; i < 7; i++) {
+            if(dayCount <= lastDay) {
+                row.appendChild(createDayCell(dayCount, todayStr));
+                dayCount++;
+            } else {
+                let td = document.createElement('td');
+                td.className = 'cal-day empty';
+                row.appendChild(td);
+            }
+        }
+        tbody.appendChild(row);
+
+        // 나머지 주 채우기
+        while(dayCount <= lastDay) {
+            row = document.createElement('tr');
+            for(let i = 0; i < 7; i++) {
+                if(dayCount <= lastDay) {
+                    row.appendChild(createDayCell(dayCount, todayStr));
+                    dayCount++;
+                } else {
+                    let td = document.createElement('td');
+                    td.className = 'cal-day empty';
+                    row.appendChild(td);
+                }
+            }
+            tbody.appendChild(row);
+        }
+    }
+
+    function createDayCell(dayNum, todayStr) {
+        let td = document.createElement('td');
+        let dayCell = document.createElement('div');
+        dayCell.className = 'cal-day';
+
+        // 날짜 문자열 포맷 (YYYY-MM-DD)
+        let mStr = String(calendarMonth + 1).padStart(2, '0');
+        let dStr = String(dayNum).padStart(2, '0');
+        let dateStr = `${calendarYear}-${mStr}-${dStr}`;
+
+        if(dateStr === todayStr) {
+            dayCell.classList.add('today');
+        }
+        if(dateStr === selectedDateKey) {
+            dayCell.style.background = '#ffe3e3';
+            dayCell.style.borderColor = 'var(--primary)';
+        }
+
+        dayCell.innerHTML = `<span>${dayNum}</span>`;
+        dayCell.title = `${dateStr} 기록 보기`;
+
+        dayCell.onclick = () => {
+            selectedDateKey = dateStr;
+            if(currentUser) {
+                loadRecordForEdit(currentUser, dateStr);
+            }
+            loadData();
+        };
+
+        td.appendChild(dayCell);
+        return td;
     }
 
     async function verifyAdminAndLoad() {
