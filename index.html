@@ -215,13 +215,10 @@
 
         try {
             const userRef = db.collection("users").doc(id);
-            let userSnap;
+            let userSnap = { exists: false };
             try {
                 userSnap = await userRef.get();
-            } catch (err) {
-                // 서버 통신 실패 시 자동 회원가입/생성으로 유도
-                userSnap = { exists: false };
-            }
+            } catch (e) {}
 
             if(userSnap.exists) {
                 if(userSnap.data().password !== pw) {
@@ -252,7 +249,6 @@
             closeAuthModal();
             loadData();
         } catch (e) {
-            console.error(e);
             errBox.innerText = '로그인 에러: ' + e.message;
             errBox.style.display = 'block';
         }
@@ -294,6 +290,7 @@
         const movementCalories = Math.round(totalExerciseTime * 5 + steps * 0.04);
 
         try {
+            // 강제 저장 구문
             await db.collection("daily_records").doc(`${currentUser}_${selectedDateKey}`).set({
                 username: currentUser,
                 date: selectedDateKey,
@@ -303,11 +300,11 @@
 
             await db.collection("users").doc(currentUser).update({ preferredColor: color }).catch(() => {});
 
-            alert(`${selectedDateKey} 기록이 저장되었습니다!`);
+            alert(`${selectedDateKey} 기록이 성공적으로 저장되었습니다!`);
             loadData();
         } catch (e) {
             console.error(e);
-            alert('기록 저장 중 에러가 발생했습니다.');
+            alert('기록 저장 중 에러 발생: ' + e.message);
         }
     }
 
@@ -516,7 +513,7 @@
                 let div = document.createElement('div');
                 div.style.display = 'flex';
                 div.style.justifyContent = 'space-between';
-                div.style.alignItems = 'center';
+                div.style.alignItems: 'center';
                 div.style.marginBottom = '4px';
                 div.innerHTML = `
                     <span><b>${u.username}</b></span>
