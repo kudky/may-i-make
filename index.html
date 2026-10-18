@@ -156,6 +156,9 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // 오프라인 상태에서도 캐시를 활용해 에러 안 나도록 설정
+    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {});
+
     let currentUser = null;
     let selectedUserForCalendar = null;
 
@@ -215,7 +218,7 @@
 
         try {
             const userRef = db.collection("users").doc(id);
-            const userSnap = await userRef.get();
+            const userSnap = await userRef.get({ source: 'server' }).catch(() => userRef.get({ source: 'cache' }));
 
             if(userSnap.exists) {
                 if(userSnap.data().password !== pw) {
@@ -242,8 +245,7 @@
             loadData();
         } catch (e) {
             console.error(e);
-            // 에러 메시지를 모달창에 직접 띄워줌
-            errBox.innerText = '에러 발생: ' + (e.message || e);
+            errBox.innerText = '로그인 에러: 네트워크 연결 상태를 확인해주세요 (' + e.message + ')';
             errBox.style.display = 'block';
         }
     }
@@ -297,7 +299,7 @@
             loadData();
         } catch (e) {
             console.error(e);
-            alert('기록 저장 중 에러가 발생했습니다: ' + e.message);
+            alert('기록 저장 중 에러가 발생했습니다.');
         }
     }
 
@@ -358,10 +360,10 @@
         document.getElementById('view-date-title').innerText = `🔥 데일리 현황 (${selectedDateKey})`;
 
         try {
-            const configSnap = await db.collection("settings").doc("goals").get();
+            const configSnap = await db.collection("settings").doc("goals").get().catch(() => null);
             let goalCal = 2000;
             let goalTime = 60;
-            if(configSnap.exists) {
+            if(configSnap && configSnap.exists) {
                 goalCal = configSnap.data().maxCalories || 2000;
                 goalTime = configSnap.data().totalTime || 60;
             }
